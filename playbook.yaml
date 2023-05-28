@@ -1,0 +1,26 @@
+- name: test play
+  hosts: awsami
+  become: true
+  tasks:
+    - name: create a directory
+      command: mkdir test creates=test
+    - name: read a file
+      command: cat hosts chdir=/etc
+    - name: copy a file
+      copy:
+        src: ~/hosts
+        dest: /tmp
+        owner: ec2-user
+        mode: 0600
+    - name: Installing httpd on AWSAMI  # sudo yum install httpd -y
+      yum:
+        name: httpd
+        state: present
+          #become: true
+    - name: starting httpd
+      service:
+        name: httpd
+        state: started
+        enabled: true
+    - name: cloning foodapp source code to my /var/www/html
+      command: cd /var/www/html && git clone https://github.com/saiurakrishna/food-app.git
