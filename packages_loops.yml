@@ -1,5 +1,5 @@
 - name: test play
-  hosts: awsami,ubuntu
+  hosts: awsami
   become: true
   gather_facts: yes
   tasks:
@@ -12,9 +12,8 @@
         - git
         - maven
         - tree
-      when: ansible_distribution == "Amazon" or
-            ansible_distribution_version == "Amazon Linux3"
-    
+      when: ansible_facts['distribution'] == "Amazon" and
+            ansible_facts['distribution_major_version'] == "2023" 
     - name: Installing apache2 on Ubuntu
       apt:
         name: '{{ item }}'
