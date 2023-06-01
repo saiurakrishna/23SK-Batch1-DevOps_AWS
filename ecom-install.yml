@@ -1,0 +1,132 @@
+---
+  - name: Installing required packages
+    hosts: ubuntu
+    become: yes
+    vars:
+      db_name: ecomdb
+      db_user: ecomuser
+      db_pass: ecompassword
+      master_user: root
+      mysql_root_password: ecompasswrd
+      create_database: true
+
+    tasks:
+      - name: upgrading default packages
+        command: sudo apt update -y
+        when: ansible_distribution == "Ubuntu" and
+              ansible_distribution_version == "22.04"
+      - name: Installing required packages
+        dnf:
+          name: '{{item}}'
+          state: present
+        loop:
+          - mariadb105-server
+          - httpd
+          - php
+          - php-mysqli
+        when: ansible_distribution == "Amazon"
+      - name: Installing required packages on Ubuntu
+        apt:
+          name: '{{item}}'
+          state: present
+        loop:
+          - mariadb-server
+          - apache2
+          - php
+          - php-mysql
+        when: ansible_distribution == "Ubuntu"
+      - name: Starting Installed packages
+        service:
+          name: apache2
+          state: started
+          enabled: true
+        when: ansible_distribution == "Ubuntu"
+      - name: Starting Installed packages
+        service:
+          name: httpd
+          state: started
+          enabled: true
+        when: ansible_distribution == "Amazon"
+
+      - name: install python, pip etc
+        shell: apt -y install "{{ item }}"
+        with_items:
+          - pip
+          - python3-dev
+          - default-libmysqlclient-dev
+          - build-essential
+        when: ansible_distribution == "Ubuntu"
+      - name: install dependencies(python, pip etc)
+        pip:
+          name: pymysql
+          state: present
+      - name: Start MySQL
+        service:
+          name: mysqld state=started enabled=yes
+      - name: Create `/root/.my.cnf`  with root password credentials
+        template:
+          src:  my.cnf.j2
+          dest: /root/.my.cnf
+          owner: root
+          mode: 0600
+        become: yes
+        notify: Restart MySQL
+      - name: update mysql root password for all root accounts
+        mysql_user:
+          name: "{{ master_user }}"
+          host: "{{ item }}"
+          password: "{{ mysql_root_password }}"
+          login_user: "{{ master_user }}"
+          login_password: "{{ mysql_root_password }}"
+          check_implicit_admin: yes
+          priv: "*.*:ALL,GRANT"
+          login_unix_socket: /var/run/mysqld/mysqld.sock
+        with_items:
+          - localhost
+      - name: Create database
+        mysql_db:
+          name: "{{ db_name }}"
+          state: present
+          login_user: "{{ master_user }}"
+          login_password: "{{ mysql_root_password }}"
+          #login_unix_socket: /var/run/mysqld/mysqld.sock
+      - name: creating mysql user
+        mysql_user:
+          name: "{{ db_user }}"
+          login_host: localhost
+          login_user: "{{ master_user }}"
+          login_password: "{{ mysql_root_password }}"
+          login_unix_socket: /var/run/mysqld/mysqld.sock
+          priv: '*.*:ALL,GRANT'
+          state: present
+        become: yes
+        #notify: Restart MySQL
+      - name: add sample data to database
+        copy: src=db-load-script.sql dest=/tmp/db-load-script.sql owner=root mode=0600
+      - name: insert sample data into database
+        mysql_db: name=ecomdb state=import target=/tmp/db-load-script.sql login_user="{{ master_user }}" login_password="{{ mysql_root_password }}" login_unix_socket=/var/run/mysqld/mysqld.sock
+        run_once: true
+      - name: Change DirectoryIndex index.html to DirectoryIndex index.php
+        command: sudo sed -i 's/index.html/index.php/g' /etc/apache2/mods-enabled/dir.conf
+        notify: Restart apache2
+      - name: copy application code at /var/www/html/
+        copy: src=app/learning-app-ecommerce/ dest=/var/www/html/ owner=root mode=0777
+
+      - name: copying index file
+        template:
+          src: index.php
+          dest: /var/www/html/
+          owner: root
+          mode: 0777
+        become: yes
+        #notify: Restart apache2
+    handlers:
+      - name: Restart MySQL
+        service:
+          name: mysql
+          state: restarted
+      - name: Restart apache2
+        service:
+          name: apache2
+          state: restarted
+
